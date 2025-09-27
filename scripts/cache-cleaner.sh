@@ -40,7 +40,10 @@ check_dependencies() {
 
 get_cache_list() {
 	local filter_condition="$1"
-	gh cache list --json id,ref,key,sizeInBytes --repo "$GITHUB_REPOSITORY" | jq -r "$filter_condition"
+	if ! gh cache list --json id,ref,key,sizeInBytes --repo "$GITHUB_REPOSITORY" 2>/dev/null | jq -r "$filter_condition" 2>/dev/null; then
+		log_error "Failed to retrieve cache list or parse JSON"
+		return 1
+	fi
 }
 
 delete_cache() {
@@ -103,7 +106,10 @@ delete_all_caches() {
 	fi
 	local filter_condition=".[] | select(.key | test(\"$regex_pattern\")$exclude_condition) | \"\(.id)|\(.key)|\(.sizeInBytes)\""
 	local cache_list
-	cache_list=$(get_cache_list "$filter_condition")
+	if ! cache_list=$(get_cache_list "$filter_condition"); then
+		log_error "Failed to get cache list for delete_all_caches"
+		return 1
+	fi
 	if [[ -z "$cache_list" ]]; then
 		log_warning "No matching caches found"
 		return
@@ -142,7 +148,10 @@ delete_branch_caches() {
 			log_info "Processing pull request: $branch"
 			local filter_condition=".[] | select(.ref == \"$branch\" and (.key | test(\"$regex_pattern\"))) | \"\(.id)|\(.key)|\(.sizeInBytes)\""
 			local cache_list
-			cache_list=$(get_cache_list "$filter_condition")
+			if ! cache_list=$(get_cache_list "$filter_condition"); then
+				log_error "Failed to get cache list for pull request '$branch'"
+				continue
+			fi
 			if [[ -z "$cache_list" ]]; then
 				log_warning "No matching caches found for pull request '$branch'"
 				continue
@@ -162,7 +171,10 @@ delete_branch_caches() {
 		log_info "Processing branch: $clean_branch"
 		local filter_condition=".[] | select(.ref == \"refs/heads/$clean_branch\" and (.key | test(\"$regex_pattern\"))) | \"\(.id)|\(.key)|\(.sizeInBytes)\""
 		local cache_list
-		cache_list=$(get_cache_list "$filter_condition")
+		if ! cache_list=$(get_cache_list "$filter_condition"); then
+			log_error "Failed to get cache list for branch '$clean_branch'"
+			continue
+		fi
 		if [[ -z "$cache_list" ]]; then
 			log_warning "No matching caches found for branch '$clean_branch'"
 			continue
@@ -188,7 +200,7 @@ output_results() {
 	if [[ ${#DELETED_CACHE_IDS[@]} -eq 0 ]]; then
 		deleted_ids_json="[]"
 	else
-		deleted_ids_json=$(printf '%s\n' "${DELETED_CACHE_IDS[@]}" | jq -R . | jq -s .)
+		deleted_ids_json=$(printf '"%s"\n' "${DELETED_CACHE_IDS[@]}" | jq -s .)
 	fi
 	echo "deleted_cache_ids=$deleted_ids_json" >>"$GITHUB_OUTPUT"
 }
