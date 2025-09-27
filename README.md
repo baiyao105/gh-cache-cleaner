@@ -1,4 +1,4 @@
-# GitHub Cache Cleaner Action
+# Action Cache Cleaner Action
 
 An GitHub Actions cache cleaner that supports branch-specific, quantity-limited, and multiple cleaning modes.
 
@@ -142,7 +142,10 @@ jobs:
         uses: baiyao105/gh-cache-cleaner@v1
         with:
           token: ${{ github.token }}
-          branches: ${{ github.head_ref }}
+          branches: |
+           refs/pull/${{ github.event.pull_request.number }}/merge
+           refs/heads/${{ github.event.pull_request.head_ref }}
+
 ```
 
 ### Scheduled Cleanup

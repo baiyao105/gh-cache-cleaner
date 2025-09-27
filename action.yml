@@ -1,5 +1,5 @@
-name: "GitHub Cache Cleaner"
-description: "GitHub Actions cache cleaner"
+name: "Action-Cache Cleaner"
+description: "Cache cleaner for GitHub Actions"
 author: "Class-Widgets"
 
 branding:
