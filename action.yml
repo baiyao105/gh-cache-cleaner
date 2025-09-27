@@ -1,0 +1,72 @@
+name: "GitHub Cache Cleaner"
+description: "GitHub Actions cache cleaner"
+author: "Class-Widgets"
+
+branding:
+  icon: "trash-2"
+  color: "red"
+
+inputs:
+  token:
+    description: "GitHub token"
+    required: true
+    default: ${{ github.token }}
+
+  delete_all:
+    description: "Delete all caches in the repository (overrides other options)"
+    required: false
+    default: "false"
+
+  branches:
+    description: "Branch names to delete caches from (supports multiple, separated by comma or newline)"
+    required: false
+    default: ""
+
+  max_delete_count:
+    description: "Maximum number of caches to delete (default -1 deletes all)"
+    required: false
+    default: "-1"
+
+  exclude_branches:
+    description: "Branches to exclude (used with delete_all)"
+    required: false
+    default: "[]"
+
+  cache_key_pattern:
+    description: "Cache key matching pattern (supports wildcard *)"
+    required: false
+    default: "*"
+
+outputs:
+  deleted_count:
+    description: "Number of caches actually deleted"
+    value: ${{ steps.cache-cleanup.outputs.deleted_count }}
+
+  total_size_saved:
+    description: "Total cache size freed (in bytes)"
+    value: ${{ steps.cache-cleanup.outputs.total_size_saved }}
+
+  deleted_cache_ids:
+    description: "List of deleted cache IDs (JSON format)"
+    value: ${{ steps.cache-cleanup.outputs.deleted_cache_ids }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Environment
+      shell: bash
+      run: |
+        echo "GITHUB_REPOSITORY=${{ github.repository }}" >> $GITHUB_ENV
+        echo "INPUT_TOKEN=${{ inputs.token }}" >> $GITHUB_ENV
+        echo "INPUT_DELETE_ALL=${{ inputs.delete_all }}" >> $GITHUB_ENV
+        echo "INPUT_BRANCHES=${{ inputs.branches }}" >> $GITHUB_ENV
+        echo "INPUT_MAX_DELETE_COUNT=${{ inputs.max_delete_count }}" >> $GITHUB_ENV
+        echo "INPUT_EXCLUDE_BRANCHES=${{ inputs.exclude_branches }}" >> $GITHUB_ENV
+        echo "INPUT_CACHE_KEY_PATTERN=${{ inputs.cache_key_pattern }}" >> $GITHUB_ENV
+
+    - name: Execute Cache Cleanup
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        bash ${{ github.action_path }}/scripts/cache-cleaner.sh

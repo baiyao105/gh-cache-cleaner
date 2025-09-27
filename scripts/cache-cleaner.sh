@@ -1,0 +1,182 @@
+#!/bin/bash
+set -e
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+log_info() {
+	echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+log_success() {
+	echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+log_warning() {
+	echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+log_error() {
+	echo -e "${RED}[ERROR]${NC} $1"
+}
+
+DELETED_COUNT=0
+TOTAL_SIZE_SAVED=0
+DELETED_CACHE_IDS=()
+
+check_dependencies() {
+	if ! command -v gh &>/dev/null; then
+		log_error "GitHub CLI (gh) is not installed or not in PATH"
+		exit 1
+	fi
+
+	if ! command -v jq &>/dev/null; then
+		log_error "jq is not installed or not in PATH"
+		exit 1
+	fi
+}
+
+get_cache_list() {
+	local filter_condition="$1"
+	gh cache list --json id,ref,key,sizeInBytes --repo "$GITHUB_REPOSITORY" | jq -r "$filter_condition"
+}
+
+delete_cache() {
+	local cache_id="$1"
+	local cache_key="$2"
+	local cache_size="$3"
+	log_info "🗑️  Deleting cache: ID=$cache_id, Key=$cache_key"
+	if gh cache delete "$cache_id" --repo "$GITHUB_REPOSITORY" 2>/dev/null; then
+		log_success "✅ Successfully deleted cache: $cache_id"
+		DELETED_COUNT=$((DELETED_COUNT + 1))
+		TOTAL_SIZE_SAVED=$((TOTAL_SIZE_SAVED + cache_size))
+		DELETED_CACHE_IDS+=("$cache_id")
+		return 0
+	else
+		log_error "❌ Failed to delete cache: $cache_id"
+		return 1
+	fi
+}
+
+parse_branches() {
+	local branches_input="$1"
+	if [[ -z "$branches_input" ]]; then
+		echo ""
+		return
+	fi
+	echo "$branches_input" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$'
+}
+
+parse_exclude_branches() {
+	local exclude_input="$1"
+	if [[ -z "$exclude_input" || "$exclude_input" == "[]" ]]; then
+		echo ""
+		return
+	fi
+	exclude_input=$(echo "$exclude_input" | sed 's/^\[//;s/\]$//')
+	echo "$exclude_input" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/^"//;s/"$//' | grep -v '^$'
+}
+
+delete_all_caches() {
+	log_info "Delete all caches..."
+	local exclude_condition=""
+	if [[ -n "$INPUT_EXCLUDE_BRANCHES" && "$INPUT_EXCLUDE_BRANCHES" != "[]" ]]; then
+		local exclude_branches
+		exclude_branches=$(parse_exclude_branches "$INPUT_EXCLUDE_BRANCHES")
+		if [[ -n "$exclude_branches" ]]; then
+			local exclude_refs=""
+			while IFS= read -r branch; do
+				if [[ -n "$exclude_refs" ]]; then
+					exclude_refs="$exclude_refs and "
+				fi
+				exclude_refs="$exclude_refs.ref != \"refs/heads/$branch\""
+			done <<<"$exclude_branches"
+			exclude_condition=" and ($exclude_refs)"
+		fi
+	fi
+	local filter_condition=".[] | select(.key | test(\"$INPUT_CACHE_KEY_PATTERN\")$exclude_condition) | \"\(.id)|\(.key)|\(.sizeInBytes)\""
+	local cache_list
+	cache_list=$(get_cache_list "$filter_condition")
+	if [[ -z "$cache_list" ]]; then
+		log_warning "No matching caches found"
+		return
+	fi
+	local count=0
+	local max_count=$INPUT_MAX_DELETE_COUNT
+	echo "$cache_list" | while IFS='|' read -r cache_id cache_key cache_size; do
+		if [[ "$max_count" != "-1" && $count -ge $max_count ]]; then
+			break
+		fi
+		delete_cache "$cache_id" "$cache_key" "$cache_size"
+		count=$((count + 1))
+	done
+}
+
+delete_branch_caches() {
+	local branches_input="$1"
+	local max_count="$2"
+	local branches
+	branches=$(parse_branches "$branches_input")
+
+	if [[ -z "$branches" ]]; then
+		log_warning "No branches specified for deletion"
+		return
+	fi
+
+	while IFS= read -r branch; do
+		log_info "Processing branch: $branch"
+		local filter_condition=".[] | select(.ref == \"refs/heads/$branch\" and (.key | test(\"$INPUT_CACHE_KEY_PATTERN\"))) | \"\(.id)|\(.key)|\(.sizeInBytes)\""
+		local cache_list
+		cache_list=$(get_cache_list "$filter_condition")
+		if [[ -z "$cache_list" ]]; then
+			log_warning "No matching caches found for branch '$branch'"
+			continue
+		fi
+		local count=0
+		echo "$cache_list" | while IFS='|' read -r cache_id cache_key cache_size; do
+			if [[ "$max_count" != "-1" && $count -ge $max_count ]]; then
+				break
+			fi
+			delete_cache "$cache_id" "$cache_key" "$cache_size"
+			count=$((count + 1))
+		done
+		log_success "✅ Finished processing branch '$branch'"
+	done <<<"$branches"
+}
+
+output_results() {
+	log_info "Deleted cache count: $DELETED_COUNT"
+	log_info "Total size freed: $TOTAL_SIZE_SAVED bytes"
+	echo "deleted_count=$DELETED_COUNT" >>"$GITHUB_OUTPUT"
+	echo "total_size_saved=$TOTAL_SIZE_SAVED" >>"$GITHUB_OUTPUT"
+	local deleted_ids_json
+	deleted_ids_json=$(printf '%s\n' "${DELETED_CACHE_IDS[@]}" | jq -R . | jq -s .)
+	echo "deleted_cache_ids=$deleted_ids_json" >>"$GITHUB_OUTPUT"
+}
+
+main() {
+	check_dependencies
+	INPUT_CACHE_KEY_PATTERN=${INPUT_CACHE_KEY_PATTERN:-"*"}
+	INPUT_MAX_DELETE_COUNT=${INPUT_MAX_DELETE_COUNT:-"-1"}
+	INPUT_EXCLUDE_BRANCHES=${INPUT_EXCLUDE_BRANCHES:-"[]"}
+	# log_info "Configuration:"
+	# log_info "  - Repository: $GITHUB_REPOSITORY"
+	# log_info "  - Delete All: $INPUT_DELETE_ALL"
+	# log_info "  - Branches: $INPUT_BRANCHES"
+	# log_info "  - Max Delete Count: $INPUT_MAX_DELETE_COUNT"
+	# log_info "  - Exclude Branches: $INPUT_EXCLUDE_BRANCHES"
+	# log_info "  - Cache Key Pattern: $INPUT_CACHE_KEY_PATTERN"
+	if [[ "$INPUT_DELETE_ALL" == "true" ]]; then
+		delete_all_caches
+	elif [[ -n "$INPUT_BRANCHES" ]]; then
+		delete_branch_caches "$INPUT_BRANCHES" "$INPUT_MAX_DELETE_COUNT"
+	else
+		log_warning "No specific cleanup strategy specified, showing current cache list:"
+		gh cache list --repo "$GITHUB_REPOSITORY" || log_error "Unable to retrieve cache list"
+	fi
+	output_results
+}
+
+main "$@"
