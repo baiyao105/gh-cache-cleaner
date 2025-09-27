@@ -200,7 +200,7 @@ output_results() {
 	if [[ ${#DELETED_CACHE_IDS[@]} -eq 0 ]]; then
 		deleted_ids_json="[]"
 	else
-		deleted_ids_json=$(printf '"%s"\n' "${DELETED_CACHE_IDS[@]}" | jq -s .)
+		deleted_ids_json=$(printf '"%s"\n' "${DELETED_CACHE_IDS[@]}" | jq -s . -c)
 	fi
 	echo "deleted_cache_ids=$deleted_ids_json" >>"$GITHUB_OUTPUT"
 }
