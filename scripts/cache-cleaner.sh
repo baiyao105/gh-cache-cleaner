@@ -47,7 +47,7 @@ delete_cache() {
 	local cache_id="$1"
 	local cache_key="$2"
 	local cache_size="$3"
-	log_info "🗑️  Deleting cache: ID=$cache_id, Key=$cache_key"
+	log_info "🗑️ Deleting cache: ID=$cache_id, Key=$cache_key"
 	if gh cache delete "$cache_id" --repo "$GITHUB_REPOSITORY" 2>/dev/null; then
 		log_success "✅ Successfully deleted cache: $cache_id"
 		DELETED_COUNT=$((DELETED_COUNT + 1))
@@ -110,13 +110,13 @@ delete_all_caches() {
 	fi
 	local count=0
 	local max_count=$INPUT_MAX_DELETE_COUNT
-	echo "$cache_list" | while IFS='|' read -r cache_id cache_key cache_size; do
+	while IFS='|' read -r cache_id cache_key cache_size; do
 		if [[ "$max_count" != "-1" && $count -ge $max_count ]]; then
 			break
 		fi
 		delete_cache "$cache_id" "$cache_key" "$cache_size"
 		count=$((count + 1))
-	done
+	done <<<"$cache_list"
 }
 
 delete_branch_caches() {
@@ -145,13 +145,13 @@ delete_branch_caches() {
 			continue
 		fi
 		local count=0
-		echo "$cache_list" | while IFS='|' read -r cache_id cache_key cache_size; do
+		while IFS='|' read -r cache_id cache_key cache_size; do
 			if [[ "$max_count" != "-1" && $count -ge $max_count ]]; then
 				break
 			fi
 			delete_cache "$cache_id" "$cache_key" "$cache_size"
 			count=$((count + 1))
-		done
+		done <<<"$cache_list"
 		log_success "✅ Finished processing branch '$branch'"
 	done <<<"$branches"
 }
@@ -162,7 +162,11 @@ output_results() {
 	echo "deleted_count=$DELETED_COUNT" >>"$GITHUB_OUTPUT"
 	echo "total_size_saved=$TOTAL_SIZE_SAVED" >>"$GITHUB_OUTPUT"
 	local deleted_ids_json
-	deleted_ids_json=$(printf '%s\n' "${DELETED_CACHE_IDS[@]}" | jq -R . | jq -s .)
+	if [[ ${#DELETED_CACHE_IDS[@]} -eq 0 ]]; then
+		deleted_ids_json="[]"
+	else
+		deleted_ids_json=$(printf '%s\n' "${DELETED_CACHE_IDS[@]}" | jq -R . | jq -s .)
+	fi
 	echo "deleted_cache_ids=$deleted_ids_json" >>"$GITHUB_OUTPUT"
 }
 

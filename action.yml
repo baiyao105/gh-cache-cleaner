@@ -65,6 +65,7 @@ runs:
         echo "INPUT_CACHE_KEY_PATTERN=${{ inputs.cache_key_pattern }}" >> $GITHUB_ENV
 
     - name: Execute Cache Cleanup
+      id: cache-cleanup
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
