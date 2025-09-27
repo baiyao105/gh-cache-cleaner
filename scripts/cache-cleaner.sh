@@ -131,17 +131,40 @@ delete_branch_caches() {
 	fi
 
 	while IFS= read -r branch; do
-		log_info "Processing branch: $branch"
-		# Convert wildcard pattern to regex
 		local regex_pattern="$INPUT_CACHE_KEY_PATTERN"
 		if [[ "$regex_pattern" == "*" ]]; then
 			regex_pattern=".*"
 		fi
-		local filter_condition=".[] | select(.ref == \"refs/heads/$branch\" and (.key | test(\"$regex_pattern\"))) | \"\(.id)|\(.key)|\(.sizeInBytes)\""
+		local clean_branch="$branch"
+		if [[ "$branch" =~ ^refs/heads/(.+)$ ]]; then
+			clean_branch="${BASH_REMATCH[1]}"
+		elif [[ "$branch" =~ ^refs/pull/([0-9]+)/merge$ ]]; then
+			log_info "Processing pull request: $branch"
+			local filter_condition=".[] | select(.ref == \"$branch\" and (.key | test(\"$regex_pattern\"))) | \"\(.id)|\(.key)|\(.sizeInBytes)\""
+			local cache_list
+			cache_list=$(get_cache_list "$filter_condition")
+			if [[ -z "$cache_list" ]]; then
+				log_warning "No matching caches found for pull request '$branch'"
+				continue
+			fi
+			local count=0
+			while IFS='|' read -r cache_id cache_key cache_size; do
+				if [[ "$max_count" != "-1" && $count -ge $max_count ]]; then
+					break
+				fi
+				delete_cache "$cache_id" "$cache_key" "$cache_size"
+				count=$((count + 1))
+			done <<<"$cache_list"
+			log_success "✅ Finished processing pull request '$branch'"
+			continue
+		fi
+		
+		log_info "Processing branch: $clean_branch"
+		local filter_condition=".[] | select(.ref == \"refs/heads/$clean_branch\" and (.key | test(\"$regex_pattern\"))) | \"\(.id)|\(.key)|\(.sizeInBytes)\""
 		local cache_list
 		cache_list=$(get_cache_list "$filter_condition")
 		if [[ -z "$cache_list" ]]; then
-			log_warning "No matching caches found for branch '$branch'"
+			log_warning "No matching caches found for branch '$clean_branch'"
 			continue
 		fi
 		local count=0
@@ -152,7 +175,7 @@ delete_branch_caches() {
 			delete_cache "$cache_id" "$cache_key" "$cache_size"
 			count=$((count + 1))
 		done <<<"$cache_list"
-		log_success "✅ Finished processing branch '$branch'"
+		log_success "✅ Finished processing branch '$clean_branch'"
 	done <<<"$branches"
 }
 

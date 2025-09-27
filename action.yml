@@ -59,7 +59,9 @@ runs:
         echo "GITHUB_REPOSITORY=${{ github.repository }}" >> $GITHUB_ENV
         echo "INPUT_TOKEN=${{ inputs.token }}" >> $GITHUB_ENV
         echo "INPUT_DELETE_ALL=${{ inputs.delete_all }}" >> $GITHUB_ENV
-        echo "INPUT_BRANCHES=${{ inputs.branches }}" >> $GITHUB_ENV
+        BRANCHES_INPUT="${{ inputs.branches }}"
+        BRANCHES_SINGLE_LINE=$(echo "$BRANCHES_INPUT" | tr '\n' ',' | sed 's/,$//')
+        echo "INPUT_BRANCHES=$BRANCHES_SINGLE_LINE" >> $GITHUB_ENV
         echo "INPUT_MAX_DELETE_COUNT=${{ inputs.max_delete_count }}" >> $GITHUB_ENV
         echo "INPUT_EXCLUDE_BRANCHES=${{ inputs.exclude_branches }}" >> $GITHUB_ENV
         echo "INPUT_CACHE_KEY_PATTERN=${{ inputs.cache_key_pattern }}" >> $GITHUB_ENV
