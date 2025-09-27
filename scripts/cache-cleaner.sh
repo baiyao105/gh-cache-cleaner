@@ -96,7 +96,12 @@ delete_all_caches() {
 			exclude_condition=" and ($exclude_refs)"
 		fi
 	fi
-	local filter_condition=".[] | select(.key | test(\"$INPUT_CACHE_KEY_PATTERN\")$exclude_condition) | \"\(.id)|\(.key)|\(.sizeInBytes)\""
+	# Convert wildcard pattern to regex
+	local regex_pattern="$INPUT_CACHE_KEY_PATTERN"
+	if [[ "$regex_pattern" == "*" ]]; then
+		regex_pattern=".*"
+	fi
+	local filter_condition=".[] | select(.key | test(\"$regex_pattern\")$exclude_condition) | \"\(.id)|\(.key)|\(.sizeInBytes)\""
 	local cache_list
 	cache_list=$(get_cache_list "$filter_condition")
 	if [[ -z "$cache_list" ]]; then
@@ -127,7 +132,12 @@ delete_branch_caches() {
 
 	while IFS= read -r branch; do
 		log_info "Processing branch: $branch"
-		local filter_condition=".[] | select(.ref == \"refs/heads/$branch\" and (.key | test(\"$INPUT_CACHE_KEY_PATTERN\"))) | \"\(.id)|\(.key)|\(.sizeInBytes)\""
+		# Convert wildcard pattern to regex
+		local regex_pattern="$INPUT_CACHE_KEY_PATTERN"
+		if [[ "$regex_pattern" == "*" ]]; then
+			regex_pattern=".*"
+		fi
+		local filter_condition=".[] | select(.ref == \"refs/heads/$branch\" and (.key | test(\"$regex_pattern\"))) | \"\(.id)|\(.key)|\(.sizeInBytes)\""
 		local cache_list
 		cache_list=$(get_cache_list "$filter_condition")
 		if [[ -z "$cache_list" ]]; then
