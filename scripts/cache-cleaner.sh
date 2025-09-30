@@ -114,7 +114,7 @@ delete_all_caches() {
 	if [[ "$regex_pattern" == "*" ]]; then
 		regex_pattern=".*"
 	fi
-	local filter_condition=".[] | select(.key | test(\"$regex_pattern\")$exclude_condition) | \"\(.id)|\(.key)|\(.sizeInBytes)\""
+	local filter_condition=".[] | select((.key | test(\"$regex_pattern\"))$exclude_condition) | \"\(.id)|\(.key)|\(.sizeInBytes)\""
 	local cache_list
 	if ! cache_list=$(get_cache_list "$filter_condition"); then
 		log_error "Failed to get cache list for delete_all_caches"
