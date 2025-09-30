@@ -40,8 +40,18 @@ check_dependencies() {
 
 get_cache_list() {
 	local filter_condition="$1"
-	if ! gh cache list --json id,ref,key,sizeInBytes --repo "$GITHUB_REPOSITORY" 2>/dev/null | jq -r "$filter_condition" 2>/dev/null; then
-		log_error "Failed to retrieve cache list or parse JSON"
+	local cache_data
+	if ! cache_data=$(gh cache list --json id,ref,key,sizeInBytes --repo "$GITHUB_REPOSITORY" 2>&1); then
+		log_error "Failed to retrieve cache list from GitHub: $cache_data"
+		return 1
+	fi
+	if [[ -z "$cache_data" ]]; then
+		log_warning "No cache data returned from GitHub"
+		return 0
+	fi
+	if ! echo "$cache_data" | jq -r "$filter_condition" 2>/dev/null; then
+		log_error "Failed to parse cache JSON data with filter: $filter_condition"
+		log_error "Raw cache data: $cache_data"
 		return 1
 	fi
 }
